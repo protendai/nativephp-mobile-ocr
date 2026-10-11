@@ -38,13 +38,28 @@ enum OcrFunctions {
                         return
                     }
 
-                    let lines = (request.results as? [VNRecognizedTextObservation] ?? [])
-                        .compactMap { $0.topCandidates(1).first?.string }
+                    let observations = request.results as? [VNRecognizedTextObservation] ?? []
+                    let lines = observations.compactMap { $0.topCandidates(1).first?.string }
+
+                    // Where each line sits, so PHP can rebuild rows on two-column layouts.
+                    // Vision's boxes are 0-1 with a bottom-left origin; flip to top-left like Android.
+                    let boxes: [[String: Any]] = observations.compactMap { observation in
+                        guard let text = observation.topCandidates(1).first?.string else { return nil }
+                        let box = observation.boundingBox
+                        return [
+                            "text": text,
+                            "left": box.minX,
+                            "top": 1 - box.maxY,
+                            "right": box.maxX,
+                            "bottom": 1 - box.minY,
+                        ]
+                    }
 
                     Self.send(OcrFunctions.textRecognized, [
                         "id": id,
                         "text": lines.joined(separator: "\n"),
                         "lines": lines,
+                        "boxes": boxes,
                     ])
                 }
                 request.recognitionLevel = .accurate

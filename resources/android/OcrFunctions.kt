@@ -62,12 +62,28 @@ object OcrFunctions {
                 recognizer.process(image)
                     .addOnSuccessListener { result ->
                         val lines = JSONArray()
-                        result.textBlocks.forEach { block -> block.lines.forEach { lines.put(it.text) } }
+                        // Where each line sits, in image pixels, so PHP can rebuild rows on
+                        // two-column layouts (receipts) that ML Kit reads column by column.
+                        val boxes = JSONArray()
+                        result.textBlocks.forEach { block ->
+                            block.lines.forEach { line ->
+                                lines.put(line.text)
+                                val box = line.boundingBox ?: return@forEach
+                                boxes.put(JSONObject().apply {
+                                    put("text", line.text)
+                                    put("left", box.left)
+                                    put("top", box.top)
+                                    put("right", box.right)
+                                    put("bottom", box.bottom)
+                                })
+                            }
+                        }
 
                         dispatch(TEXT_RECOGNIZED, JSONObject().apply {
                             put("id", id)
                             put("text", result.text)
                             put("lines", lines)
+                            put("boxes", boxes)
                         })
                     }
                     .addOnFailureListener { e ->
