@@ -1,0 +1,53 @@
+{
+    "name": "protendai/nativephp-mobile-ocr",
+    "version": "0.1.0",
+    "description": "Free, on-device OCR (text recognition) for NativePHP Mobile v4. ML Kit on Android, Apple Vision on iOS. Works offline.",
+    "namespace": "Ocr",
+    "keywords": ["ocr", "text recognition", "ml kit", "vision", "offline"],
+    "category": "utilities",
+    "license": "MIT",
+    "pricing": {
+        "type": "free"
+    },
+    "author": {
+        "name": "Tendai Karuma",
+        "email": "karumatendai@gmail.com",
+        "url": ""
+    },
+    "homepage": "",
+    "repository": "",
+    "funding": [],
+    "platforms": [
+        "android",
+        "ios"
+    ],
+    "bridge_functions": [
+        {
+            "name": "Ocr.Recognize",
+            "android": "com.protendai.plugins.ocr.OcrFunctions.Recognize",
+            "ios": "OcrFunctions.Recognize",
+            "description": "Recognise text in an image file. Async: the result arrives as TextRecognized or RecognitionFailed."
+        }
+    ],
+    "android": {
+        "min_version": 26,
+        "permissions": [],
+        "dependencies": {
+            "implementation": [
+                "com.google.mlkit:text-recognition:16.0.1"
+            ]
+        }
+    },
+    "ios": {
+        "min_version": "18.0",
+        "dependencies": {
+            "swift_packages": [],
+            "pods": []
+        }
+    },
+    "events": [
+        "Protendai\\Ocr\\Events\\TextRecognized",
+        "Protendai\\Ocr\\Events\\RecognitionFailed"
+    ],
+    "service_provider": "Protendai\\Ocr\\OcrServiceProvider"
+}
