@@ -55,4 +55,46 @@ final class Layout
             return implode('   ', array_column($row['boxes'], 'text'));
         }, $rows));
     }
+
+    /**
+     * The number printed to the right of a label, matched by position rather
+     * than by row, so it still works when the photo is tilted or the label wraps
+     * onto two lines ("Energy" / "Bought(kWh)" with the value between them).
+     *
+     * Looks at every line matching $label (and not $exclude), then at every
+     * mostly-numeric line that starts to its right, and returns the one whose
+     * vertical centre is closest, within $reach label-heights.
+     *
+     * @param  array<int, array{text: string, left: int|float, top: int|float, right: int|float, bottom: int|float}>  $boxes
+     */
+    public static function valueBeside(array $boxes, string $label, ?string $exclude = null, float $reach = 2.5): ?string
+    {
+        $boxes = array_values(array_filter($boxes, fn ($box) => isset($box['text'], $box['left'], $box['top'], $box['right'], $box['bottom'])));
+
+        $labels = array_filter($boxes, fn ($box) => preg_match($label, $box['text']) && ($exclude === null || ! preg_match($exclude, $box['text'])));
+        $values = array_filter($boxes, fn ($box) => preg_match('/^\s*(?:[A-Z$]{1,4}\s*)?[\d][\d\s.,]*\s*$/i', $box['text']));
+
+        $best = null;
+        $bestDistance = INF;
+
+        foreach ($labels as $labelBox) {
+            $height = max($labelBox['bottom'] - $labelBox['top'], 1e-9);
+            $centre = ($labelBox['top'] + $labelBox['bottom']) / 2;
+
+            foreach ($values as $valueBox) {
+                if ($valueBox['left'] < $labelBox['right'] - $height) {
+                    continue;
+                }
+
+                $distance = abs(($valueBox['top'] + $valueBox['bottom']) / 2 - $centre);
+
+                if ($distance <= $height * $reach && $distance < $bestDistance) {
+                    $best = trim($valueBox['text']);
+                    $bestDistance = $distance;
+                }
+            }
+        }
+
+        return $best;
+    }
 }

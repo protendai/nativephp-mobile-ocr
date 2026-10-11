@@ -51,3 +51,28 @@ it('returns null when no positions were reported, so callers fall back to the pl
     expect(Layout::rows([]))->toBeNull()
         ->and(Layout::rows([['text' => 'no position']]))->toBeNull();
 });
+
+it('finds the value beside a two-line label in a tilted photo', function () {
+    $box = fn (string $text, int $left, int $top, int $right) => ['text' => $text, 'left' => $left, 'top' => $top, 'right' => $right, 'bottom' => $top + 28];
+
+    // The value column sits ~30px higher than the labels, so row grouping can't pair 297.18 with its label.
+    $boxes = [
+        $box('97.18@6.48:', 50, 460, 250),
+        $box('Energy', 50, 500, 180),
+        $box('Bought(kWh)', 50, 532, 260),
+        $box('Tender Amount', 50, 575, 330),
+        $box('297.18', 700, 486, 820),
+        $box('1,400.00', 680, 545, 820),
+    ];
+
+    expect(Layout::valueBeside($boxes, '/energy|bought|kwh/i', '/charge/i'))->toBe('297.18')
+        ->and(Layout::valueBeside($boxes, '/tender|total/i'))->toBe('1,400.00')
+        ->and(Layout::valueBeside($boxes, '/nothing like this/'))->toBeNull();
+});
+
+it('never takes a value from the left of the label or too far away', function () {
+    $box = fn (string $text, int $left, int $top) => ['text' => $text, 'left' => $left, 'top' => $top, 'right' => $left + 120, 'bottom' => $top + 28];
+
+    expect(Layout::valueBeside([$box('12.50', 10, 500), $box('Energy', 300, 500)], '/energy/i'))->toBeNull()
+        ->and(Layout::valueBeside([$box('Energy', 10, 100), $box('12.50', 400, 400)], '/energy/i'))->toBeNull();
+});
