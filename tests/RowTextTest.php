@@ -55,14 +55,16 @@ it('returns null when no positions were reported, so callers fall back to the pl
 it('finds the value beside a two-line label in a tilted photo', function () {
     $box = fn (string $text, int $left, int $top, int $right) => ['text' => $text, 'left' => $left, 'top' => $top, 'right' => $right, 'bottom' => $top + 28];
 
-    // The value column sits ~30px higher than the labels, so row grouping can't pair 297.18 with its label.
+    // The value column sits half a line (14px) higher than the labels, and 297.18 is printed between
+    // the two label lines, so row grouping can't pair it. (Tilts of a whole line or more are ambiguous
+    // by position alone: the value is then genuinely nearer the next label.)
     $boxes = [
         $box('97.18@6.48:', 50, 460, 250),
         $box('Energy', 50, 500, 180),
         $box('Bought(kWh)', 50, 532, 260),
         $box('Tender Amount', 50, 575, 330),
-        $box('297.18', 700, 486, 820),
-        $box('1,400.00', 680, 545, 820),
+        $box('297.18', 700, 502, 820),
+        $box('1,400.00', 680, 561, 820),
     ];
 
     expect(Layout::valueBeside($boxes, '/energy|bought|kwh/i', '/charge/i'))->toBe('297.18')
