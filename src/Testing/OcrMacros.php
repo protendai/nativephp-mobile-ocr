@@ -24,6 +24,11 @@ class OcrMacros
             return $this->assertNotCalled('Ocr.Recognize');
         });
 
+        /** Assert Ocr::capture() opened the camera. */
+        FakeBridge::macro('assertCaptureRequested', function (?callable $filter = null) {
+            return $this->assertCalled('Ocr.Capture', $filter);
+        });
+
         /** Assert Ocr::scan() opened the document scanner. */
         FakeBridge::macro('assertScanRequested', function (?callable $filter = null) {
             return $this->assertCalled('Ocr.Scan', $filter);

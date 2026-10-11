@@ -33,6 +33,26 @@ class Ocr
     }
 
     /**
+     * Take a photo with the back camera, then recognise it. Returns a request id straight away.
+     *
+     * Opens the phone's camera app itself (Android) or the system camera (iOS),
+     * asking for the back lens: camera apps opened the usual way reopen whichever
+     * lens was used last, often the selfie camera. The photo is read as taken (no
+     * crop or filters), which keeps fine print sharp. The app needs camera
+     * permission if it declares one (it is requested on first use) and, on iOS,
+     * NSCameraUsageDescription.
+     *
+     * The result arrives as TextRecognized (whose $path is the photo),
+     * RecognitionFailed, or ScanCancelled when the user backs out.
+     *
+     * @throws OcrException when the device refuses the request, so no event will follow
+     */
+    public function capture(?string $id = null): string
+    {
+        return $this->start('Ocr.Capture', $id, 'The camera could not open');
+    }
+
+    /**
      * Open the platform document scanner, then recognise the text on the scanned page.
      * Returns a request id straight away.
      *
@@ -50,16 +70,21 @@ class Ocr
      */
     public function scan(?string $id = null): string
     {
+        return $this->start('Ocr.Scan', $id, 'The scanner could not start');
+    }
+
+    private function start(string $method, ?string $id, string $fallbackMessage): string
+    {
         $id ??= (string) Str::uuid();
 
         if (! function_exists('nativephp_call')) {
             return $id;
         }
 
-        $response = json_decode((string) nativephp_call('Ocr.Scan', json_encode(['id' => $id])), true);
+        $response = json_decode((string) nativephp_call($method, json_encode(['id' => $id])), true);
 
         if (is_array($response) && ($response['status'] ?? null) === 'error') {
-            throw new OcrException($response['message'] ?? 'The scanner could not start', $response['code'] ?? null);
+            throw new OcrException($response['message'] ?? $fallbackMessage, $response['code'] ?? null);
         }
 
         return $id;

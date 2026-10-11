@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Facade;
 
 /**
  * @method static string recognize(string $path, ?string $id = null)
+ * @method static string capture(?string $id = null)
  * @method static string scan(?string $id = null)
  *
  * @see \Protendai\Ocr\Ocr

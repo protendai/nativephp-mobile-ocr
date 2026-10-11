@@ -79,6 +79,32 @@ object OcrFunctions {
         }
     }
 
+    /**
+     * Take a photo with the phone's camera app, asking for the back lens, then
+     * recognise it. Unlike Scan, the photo is not cropped or filtered, which keeps
+     * fine print sharp (and reads better off screens).
+     * Parameters:
+     *   - id: (optional) string - request id echoed back on the result event
+     * Returns immediately; the result arrives as TextRecognized, RecognitionFailed,
+     * or ScanCancelled when the user backs out.
+     */
+    class Capture(private val activity: FragmentActivity) : BridgeFunction {
+        override fun execute(parameters: Map<String, Any>): Map<String, Any> {
+            val id = parameters["id"] as? String ?: UUID.randomUUID().toString()
+
+            activity.runOnUiThread {
+                try {
+                    ScanCoordinator.install(activity).capture(id)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not open the camera: ${e.message}", e)
+                    fail(activity, id, "Could not open the camera: ${e.message}")
+                }
+            }
+
+            return BridgeResponse.success(mapOf("id" to id, "status" to "started"))
+        }
+    }
+
     /** Run ML Kit on an image file off the UI thread and dispatch the result. */
     internal fun recognizeFile(activity: FragmentActivity, file: File, id: String) {
         // Decoding a full-size photo is slow; keep it off the PHP and UI threads.

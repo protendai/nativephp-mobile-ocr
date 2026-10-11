@@ -35,6 +35,12 @@
             "description": "Recognise text in an image file. Async: the result arrives as TextRecognized or RecognitionFailed."
         },
         {
+            "name": "Ocr.Capture",
+            "android": "com.protendai.plugins.ocr.OcrFunctions.Capture",
+            "ios": "OcrFunctions.Capture",
+            "description": "Take a photo with the back camera via the phone's camera app, then recognise it. Async: TextRecognized, RecognitionFailed or ScanCancelled."
+        },
+        {
             "name": "Ocr.Scan",
             "android": "com.protendai.plugins.ocr.OcrFunctions.Scan",
             "ios": "OcrFunctions.Scan",

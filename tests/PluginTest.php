@@ -18,9 +18,10 @@ describe('manifest', function () {
             ->and($this->manifest['namespace'])->toBe('Ocr');
     });
 
-    it('declares the Recognize and Scan bridge functions on both platforms', function () {
+    it('declares the Recognize, Capture and Scan bridge functions on both platforms', function () {
         expect(array_map(fn ($f) => [$f['name'], $f['android'], $f['ios']], $this->manifest['bridge_functions']))->toBe([
             ['Ocr.Recognize', 'com.protendai.plugins.ocr.OcrFunctions.Recognize', 'OcrFunctions.Recognize'],
+            ['Ocr.Capture', 'com.protendai.plugins.ocr.OcrFunctions.Capture', 'OcrFunctions.Capture'],
             ['Ocr.Scan', 'com.protendai.plugins.ocr.OcrFunctions.Scan', 'OcrFunctions.Scan'],
         ]);
     });
@@ -51,6 +52,18 @@ describe('manifest', function () {
 });
 
 describe('native code', function () {
+    it('implements Capture with the back camera on both platforms', function () {
+        $coordinator = file_get_contents($this->pluginPath.'/resources/android/ScanCoordinator.kt');
+
+        expect($this->kotlin)->toContain('class Capture(private val activity: FragmentActivity) : BridgeFunction')
+            ->and($coordinator)->toContain('MediaStore.ACTION_IMAGE_CAPTURE')
+            ->toContain('"android.intent.extras.CAMERA_FACING", 0')
+            ->toContain('"android.intent.extras.LENS_FACING_BACK", 1')
+            ->toContain('RequestPermission()')
+            ->and($this->swift)->toContain('class Capture: BridgeFunction')
+            ->toContain('picker.cameraDevice = .rear');
+    });
+
     it('implements Scan with the platform document scanners', function () {
         $coordinator = file_get_contents($this->pluginPath.'/resources/android/ScanCoordinator.kt');
 

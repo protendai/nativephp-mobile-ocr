@@ -43,7 +43,44 @@ enum OcrFunctions {
         }
     }
 
+    /// Take a photo with the rear camera, then recognise it. Unlike Scan, the photo
+    /// is not cropped or filtered, which keeps fine print sharp.
+    /// Parameters:
+    ///   - id: (optional) string - request id echoed back on the result event
+    /// Returns immediately; the result arrives as TextRecognized, RecognitionFailed,
+    /// or ScanCancelled when the user backs out.
+    class Capture: BridgeFunction {
+
+        func execute(parameters: [String: Any]) throws -> [String: Any] {
+            let id = parameters["id"] as? String ?? UUID().uuidString
+
+            guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                return BridgeResponse.error(code: "UNSUPPORTED", message: "No camera available")
+            }
+
+            DispatchQueue.main.async {
+                guard let presenter = OcrFunctions.topViewController() else {
+                    Recognize.fail(id, "Nothing to present the camera from")
+                    return
+                }
+
+                let delegate = CaptureDelegate(id: id)
+                OcrFunctions.activeCapture = delegate // the picker only holds its delegate weakly
+                let picker = UIImagePickerController()
+                picker.sourceType = .camera
+                if UIImagePickerController.isCameraDeviceAvailable(.rear) {
+                    picker.cameraDevice = .rear
+                }
+                picker.delegate = delegate
+                presenter.present(picker, animated: true)
+            }
+
+            return BridgeResponse.success(data: ["id": id, "status": "started"])
+        }
+    }
+
     fileprivate static var activeScan: ScanDelegate?
+    fileprivate static var activeCapture: CaptureDelegate?
 
     fileprivate static func topViewController() -> UIViewController? {
         let window = UIApplication.shared.connectedScenes
@@ -184,6 +221,41 @@ fileprivate final class ScanDelegate: NSObject, VNDocumentCameraViewControllerDe
         controller.dismiss(animated: true)
         OcrFunctions.activeScan = nil
         OcrFunctions.Recognize.fail(id, error.localizedDescription)
+    }
+}
+
+/// Receives the camera photo, saves it and runs recognition on it.
+fileprivate final class CaptureDelegate: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    let id: String
+
+    init(id: String) {
+        self.id = id
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        picker.dismiss(animated: true)
+        defer { OcrFunctions.activeCapture = nil }
+
+        guard let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.9) else {
+            OcrFunctions.Recognize.fail(id, "The camera returned no photo")
+            return
+        }
+
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ocr-capture-\(id).jpg")
+        do {
+            try data.write(to: url)
+        } catch {
+            OcrFunctions.Recognize.fail(id, "Could not save the photo: \(error.localizedDescription)")
+            return
+        }
+
+        OcrFunctions.Recognize.run(path: url.path, id: id)
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
+        OcrFunctions.activeCapture = nil
+        OcrFunctions.Recognize.send(OcrFunctions.scanCancelled, ["id": id])
     }
 }
 
