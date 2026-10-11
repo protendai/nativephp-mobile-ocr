@@ -23,5 +23,10 @@ class OcrMacros
         FakeBridge::macro('assertNoOcrRequested', function () {
             return $this->assertNotCalled('Ocr.Recognize');
         });
+
+        /** Assert Ocr::scan() opened the document scanner. */
+        FakeBridge::macro('assertScanRequested', function (?callable $filter = null) {
+            return $this->assertCalled('Ocr.Scan', $filter);
+        });
     }
 }

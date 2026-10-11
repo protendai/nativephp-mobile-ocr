@@ -16,12 +16,14 @@ class TextRecognized
      * @param  array<int, string>  $lines  Each recognised line, in the engine's reading order
      * @param  array<int, array{text: string, left: int|float, top: int|float, right: int|float, bottom: int|float}>  $boxes
      *                                                                                                                       Each line with its position (pixels on Android, 0-1 on iOS; top-left origin on both)
+     * @param  string|null  $path  The image that was read (for Ocr::scan(), the scanned page)
      */
     public function __construct(
         public string $id,
         public string $text,
         public array $lines = [],
         public array $boxes = [],
+        public ?string $path = null,
     ) {}
 
     /**

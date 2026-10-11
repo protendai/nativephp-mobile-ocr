@@ -1,9 +1,15 @@
 {
     "name": "protendai/nativephp-mobile-ocr",
     "version": "0.1.0",
-    "description": "Free, on-device OCR (text recognition) for NativePHP Mobile v4. ML Kit on Android, Apple Vision on iOS. Works offline.",
+    "description": "Free, on-device OCR (text recognition) and document scanning for NativePHP Mobile v4. ML Kit on Android, Apple Vision on iOS.",
     "namespace": "Ocr",
-    "keywords": ["ocr", "text recognition", "ml kit", "vision", "offline"],
+    "keywords": [
+        "ocr",
+        "text recognition",
+        "ml kit",
+        "vision",
+        "offline"
+    ],
     "category": "utilities",
     "license": "MIT",
     "pricing": {
@@ -27,6 +33,12 @@
             "android": "com.protendai.plugins.ocr.OcrFunctions.Recognize",
             "ios": "OcrFunctions.Recognize",
             "description": "Recognise text in an image file. Async: the result arrives as TextRecognized or RecognitionFailed."
+        },
+        {
+            "name": "Ocr.Scan",
+            "android": "com.protendai.plugins.ocr.OcrFunctions.Scan",
+            "ios": "OcrFunctions.Scan",
+            "description": "Open the platform document scanner (back camera, edge detection, crop), then recognise the page. Async: TextRecognized, RecognitionFailed or ScanCancelled."
         }
     ],
     "android": {
@@ -34,7 +46,8 @@
         "permissions": [],
         "dependencies": {
             "implementation": [
-                "com.google.mlkit:text-recognition:16.0.1"
+                "com.google.mlkit:text-recognition:16.0.1",
+                "com.google.android.gms:play-services-mlkit-document-scanner:16.0.0"
             ]
         }
     },
@@ -47,7 +60,8 @@
     },
     "events": [
         "Protendai\\Ocr\\Events\\TextRecognized",
-        "Protendai\\Ocr\\Events\\RecognitionFailed"
+        "Protendai\\Ocr\\Events\\RecognitionFailed",
+        "Protendai\\Ocr\\Events\\ScanCancelled"
     ],
     "service_provider": "Protendai\\Ocr\\OcrServiceProvider"
 }

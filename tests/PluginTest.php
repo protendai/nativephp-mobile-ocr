@@ -18,19 +18,18 @@ describe('manifest', function () {
             ->and($this->manifest['namespace'])->toBe('Ocr');
     });
 
-    it('declares the Recognize bridge function on both platforms', function () {
-        expect($this->manifest['bridge_functions'])->toBe([[
-            'name' => 'Ocr.Recognize',
-            'android' => 'com.protendai.plugins.ocr.OcrFunctions.Recognize',
-            'ios' => 'OcrFunctions.Recognize',
-            'description' => $this->manifest['bridge_functions'][0]['description'],
-        ]]);
+    it('declares the Recognize and Scan bridge functions on both platforms', function () {
+        expect(array_map(fn ($f) => [$f['name'], $f['android'], $f['ios']], $this->manifest['bridge_functions']))->toBe([
+            ['Ocr.Recognize', 'com.protendai.plugins.ocr.OcrFunctions.Recognize', 'OcrFunctions.Recognize'],
+            ['Ocr.Scan', 'com.protendai.plugins.ocr.OcrFunctions.Scan', 'OcrFunctions.Scan'],
+        ]);
     });
 
-    it('declares both result events and their classes exist', function () {
+    it('declares every result event and their classes exist', function () {
         expect($this->manifest['events'])->toBe([
             'Protendai\\Ocr\\Events\\TextRecognized',
             'Protendai\\Ocr\\Events\\RecognitionFailed',
+            'Protendai\\Ocr\\Events\\ScanCancelled',
         ]);
 
         foreach ($this->manifest['events'] as $event) {
@@ -52,6 +51,20 @@ describe('manifest', function () {
 });
 
 describe('native code', function () {
+    it('implements Scan with the platform document scanners', function () {
+        $coordinator = file_get_contents($this->pluginPath.'/resources/android/ScanCoordinator.kt');
+
+        expect($this->kotlin)->toContain('class Scan(private val activity: FragmentActivity) : BridgeFunction')
+            ->and($coordinator)->toContain('package com.protendai.plugins.ocr')
+            ->toContain('GmsDocumentScanning.getClient')
+            ->toContain('StartIntentSenderForResult')
+            ->and($this->swift)->toContain('class Scan: BridgeFunction')
+            ->toContain('VNDocumentCameraViewController');
+
+        expect($this->manifest['android']['dependencies']['implementation'])
+            ->toContain('com.google.android.gms:play-services-mlkit-document-scanner:16.0.0');
+    });
+
     it('implements Recognize on Android with the manifest package', function () {
         expect($this->kotlin)
             ->toContain('package com.protendai.plugins.ocr')
@@ -70,7 +83,7 @@ describe('native code', function () {
     });
 
     it('fires the same event classes the manifest declares', function () {
-        foreach (['TextRecognized', 'RecognitionFailed'] as $event) {
+        foreach (['TextRecognized', 'RecognitionFailed', 'ScanCancelled'] as $event) {
             $escaped = 'Protendai\\\\Ocr\\\\Events\\\\'.$event;
 
             expect($this->kotlin)->toContain($escaped)
@@ -79,7 +92,7 @@ describe('native code', function () {
     });
 
     it('sends the payload keys the PHP events expect', function () {
-        foreach (['"id"', '"text"', '"lines"', '"message"'] as $key) {
+        foreach (['"id"', '"text"', '"lines"', '"boxes"', '"path"', '"message"'] as $key) {
             expect($this->kotlin)->toContain($key)
                 ->and($this->swift)->toContain($key);
         }
