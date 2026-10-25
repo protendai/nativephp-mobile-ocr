@@ -6,8 +6,8 @@
 beforeEach(function () {
     $this->pluginPath = dirname(__DIR__);
     $this->manifest = json_decode(file_get_contents($this->pluginPath.'/nativephp.json'), true);
-    $this->kotlin = file_get_contents($this->pluginPath.'/resources/android/OcrFunctions.kt');
-    $this->swift = file_get_contents($this->pluginPath.'/resources/ios/OcrFunctions.swift');
+    $this->kotlin = file_get_contents($this->pluginPath.'/resources/android/src/OcrFunctions.kt');
+    $this->swift = file_get_contents($this->pluginPath.'/resources/ios/Sources/OcrFunctions.swift');
 });
 
 describe('manifest', function () {
@@ -53,7 +53,7 @@ describe('manifest', function () {
 
 describe('native code', function () {
     it('implements Capture with the back camera on both platforms', function () {
-        $coordinator = file_get_contents($this->pluginPath.'/resources/android/ScanCoordinator.kt');
+        $coordinator = file_get_contents($this->pluginPath.'/resources/android/src/ScanCoordinator.kt');
 
         expect($this->kotlin)->toContain('class Capture(private val activity: FragmentActivity) : BridgeFunction')
             ->and($coordinator)->toContain('MediaStore.ACTION_IMAGE_CAPTURE')
@@ -65,7 +65,7 @@ describe('native code', function () {
     });
 
     it('implements Scan with the platform document scanners', function () {
-        $coordinator = file_get_contents($this->pluginPath.'/resources/android/ScanCoordinator.kt');
+        $coordinator = file_get_contents($this->pluginPath.'/resources/android/src/ScanCoordinator.kt');
 
         expect($this->kotlin)->toContain('class Scan(private val activity: FragmentActivity) : BridgeFunction')
             ->and($coordinator)->toContain('package com.protendai.plugins.ocr')
