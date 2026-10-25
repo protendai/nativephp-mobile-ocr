@@ -1,4 +1,6 @@
+import AVFoundation
 import Foundation
+import ImageIO
 import UIKit
 import Vision
 import VisionKit
@@ -10,6 +12,12 @@ enum OcrFunctions {
     static let textRecognized = "Protendai\\Ocr\\Events\\TextRecognized"
     static let recognitionFailed = "Protendai\\Ocr\\Events\\RecognitionFailed"
     static let scanCancelled = "Protendai\\Ocr\\Events\\ScanCancelled"
+
+    static let busyMessage = "Another capture or scan is already in progress"
+    static let permissionDeniedMessage = "Camera permission denied"
+
+    /// Longest side, in pixels, of the image handed to Vision. Larger photos are downscaled.
+    static let maxSide = 4096
 
     /// Open Apple's document camera (finds the page edges, flattens and crops it),
     /// then recognise the text on the scanned page.
@@ -26,16 +34,13 @@ enum OcrFunctions {
                 return BridgeResponse.error(code: "UNSUPPORTED", message: "Document scanning is not supported on this device")
             }
 
-            DispatchQueue.main.async {
-                guard let presenter = OcrFunctions.topViewController() else {
-                    Recognize.fail(id, "Nothing to present the scanner from")
-                    return
-                }
-
+            OcrFunctions.startCameraFlow(id: id, failurePrefix: "Nothing to present the scanner from") { presenter in
                 let delegate = ScanDelegate(id: id)
                 OcrFunctions.activeScan = delegate // the controller only holds its delegate weakly
                 let scanner = VNDocumentCameraViewController()
                 scanner.delegate = delegate
+                // Full screen: a sheet could be swiped away without telling the delegate.
+                scanner.modalPresentationStyle = .fullScreen
                 presenter.present(scanner, animated: true)
             }
 
@@ -58,12 +63,7 @@ enum OcrFunctions {
                 return BridgeResponse.error(code: "UNSUPPORTED", message: "No camera available")
             }
 
-            DispatchQueue.main.async {
-                guard let presenter = OcrFunctions.topViewController() else {
-                    Recognize.fail(id, "Nothing to present the camera from")
-                    return
-                }
-
+            OcrFunctions.startCameraFlow(id: id, failurePrefix: "Nothing to present the camera from") { presenter in
                 let delegate = CaptureDelegate(id: id)
                 OcrFunctions.activeCapture = delegate // the picker only holds its delegate weakly
                 let picker = UIImagePickerController()
@@ -72,6 +72,7 @@ enum OcrFunctions {
                     picker.cameraDevice = .rear
                 }
                 picker.delegate = delegate
+                picker.modalPresentationStyle = .fullScreen
                 presenter.present(picker, animated: true)
             }
 
@@ -79,8 +80,58 @@ enum OcrFunctions {
         }
     }
 
+    // Main-thread state: the one capture or scan that may be open at a time.
+    fileprivate static var pendingId: String?
     fileprivate static var activeScan: ScanDelegate?
     fileprivate static var activeCapture: CaptureDelegate?
+
+    /// Claim the single capture/scan slot, check camera access (asking on first use),
+    /// then present. Runs on the main thread; every failure arrives as an event.
+    fileprivate static func startCameraFlow(id: String, failurePrefix: String, present: @escaping (UIViewController) -> Void) {
+        DispatchQueue.main.async {
+            if OcrFunctions.pendingId != nil {
+                OcrFunctions.Recognize.fail(id, OcrFunctions.busyMessage)
+                return
+            }
+            OcrFunctions.pendingId = id
+            OcrFunctions.removeOldImages()
+
+            let presentNow: () -> Void = {
+                guard let presenter = OcrFunctions.topViewController() else {
+                    OcrFunctions.finish()
+                    OcrFunctions.Recognize.fail(id, failurePrefix)
+                    return
+                }
+                present(presenter)
+            }
+
+            switch AVCaptureDevice.authorizationStatus(for: .video) {
+            case .authorized:
+                presentNow()
+            case .notDetermined:
+                AVCaptureDevice.requestAccess(for: .video) { granted in
+                    DispatchQueue.main.async {
+                        if granted {
+                            presentNow()
+                        } else {
+                            OcrFunctions.finish()
+                            OcrFunctions.Recognize.fail(id, OcrFunctions.permissionDeniedMessage)
+                        }
+                    }
+                }
+            default: // .denied, .restricted: the same event Android sends
+                OcrFunctions.finish()
+                OcrFunctions.Recognize.fail(id, OcrFunctions.permissionDeniedMessage)
+            }
+        }
+    }
+
+    /// Release the capture/scan slot. Main thread only.
+    fileprivate static func finish() {
+        pendingId = nil
+        activeScan = nil
+        activeCapture = nil
+    }
 
     fileprivate static func topViewController() -> UIViewController? {
         let window = UIApplication.shared.connectedScenes
@@ -90,6 +141,38 @@ enum OcrFunctions {
         var top = window?.rootViewController
         while let presented = top?.presentedViewController { top = presented }
         return top
+    }
+
+    /// Where captured photos and scanned pages are written.
+    fileprivate static func workDirectory() -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ocr", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// Remove images left by earlier captures and scans (each result's path stays valid for at least a minute).
+    fileprivate static func removeOldImages() {
+        let cutoff = Date().addingTimeInterval(-60)
+        let fm = FileManager.default
+        let files = (try? fm.contentsOfDirectory(at: workDirectory(), includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for file in files {
+            let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            if modified < cutoff {
+                try? fm.removeItem(at: file)
+            }
+        }
+    }
+
+    /// A file URL that is safe whatever the caller passed as the request id.
+    fileprivate static func imageURL(prefix: String, id: String) -> URL {
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
+        var safe = ""
+        for scalar in id.unicodeScalars {
+            safe.unicodeScalars.append(allowed.contains(scalar) ? scalar : "_")
+        }
+        let safeId = String(safe.prefix(64))
+        let stamp = Int(Date().timeIntervalSince1970 * 1000)
+        return workDirectory().appendingPathComponent("\(prefix)-\(safeId)-\(stamp).jpg")
     }
 
     /// Recognise text in an image file.
@@ -114,13 +197,32 @@ enum OcrFunctions {
             return BridgeResponse.success(data: ["id": id, "status": "started"])
         }
 
+        /// Decode the image upright (EXIF orientation applied) with its longest side
+        /// at most `maxSide` pixels, without loading a full-size bitmap first.
+        static func loadUpright(path: String) -> CGImage? {
+            let url = URL(fileURLWithPath: path)
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: OcrFunctions.maxSide,
+            ]
+
+            return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        }
+
         /// Recognise text in the image at `path` off the main thread and send the result.
         static func run(path: String, id: String) {
             DispatchQueue.global(qos: .userInitiated).async {
-                guard let image = UIImage(contentsOfFile: path), let cgImage = image.cgImage else {
-                    Self.fail(id, "Could not load image at \(path)")
+                guard let cgImage = autoreleasepool(invoking: { loadUpright(path: path) }) else {
+                    Self.fail(id, "Could not open image: unsupported or damaged file")
                     return
                 }
+
+                let width = cgImage.width
+                let height = cgImage.height
 
                 let request = VNRecognizeTextRequest { request, error in
                     if let error = error {
@@ -132,16 +234,19 @@ enum OcrFunctions {
                     let lines = observations.compactMap { $0.topCandidates(1).first?.string }
 
                     // Where each line sits, so PHP can rebuild rows on two-column layouts.
-                    // Vision's boxes are 0-1 with a bottom-left origin; flip to top-left like Android.
+                    // Vision's boxes are 0-1 with a bottom-left origin; convert to pixels of the
+                    // (upright) image with a top-left origin, the same as Android.
+                    let w = Double(width)
+                    let h = Double(height)
                     let boxes: [[String: Any]] = observations.compactMap { observation in
                         guard let text = observation.topCandidates(1).first?.string else { return nil }
                         let box = observation.boundingBox
                         return [
                             "text": text,
-                            "left": box.minX,
-                            "top": 1 - box.maxY,
-                            "right": box.maxX,
-                            "bottom": 1 - box.minY,
+                            "left": Int((Double(box.minX) * w).rounded()),
+                            "top": Int(((1 - Double(box.maxY)) * h).rounded()),
+                            "right": Int((Double(box.maxX) * w).rounded()),
+                            "bottom": Int(((1 - Double(box.minY)) * h).rounded()),
                         ]
                     }
 
@@ -151,17 +256,16 @@ enum OcrFunctions {
                         "lines": lines,
                         "boxes": boxes,
                         "path": path,
+                        "width": width,
+                        "height": height,
                     ])
                 }
                 request.recognitionLevel = .accurate
                 // Language correction "fixes" long digit runs into words. Keep it off for tokens and codes.
                 request.usesLanguageCorrection = false
 
-                let handler = VNImageRequestHandler(
-                    cgImage: cgImage,
-                    orientation: CGImagePropertyOrientation(image.imageOrientation),
-                    options: [:]
-                )
+                // The image is already upright, so no orientation is passed.
+                let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
 
                 do {
                     try handler.perform([request])
@@ -193,14 +297,14 @@ fileprivate final class ScanDelegate: NSObject, VNDocumentCameraViewControllerDe
 
     func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
         controller.dismiss(animated: true)
-        defer { OcrFunctions.activeScan = nil }
+        defer { OcrFunctions.finish() }
 
         guard scan.pageCount > 0, let data = scan.imageOfPage(at: 0).jpegData(compressionQuality: 0.9) else {
             OcrFunctions.Recognize.fail(id, "The scanner returned no page")
             return
         }
 
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ocr-scan-\(id).jpg")
+        let url = OcrFunctions.imageURL(prefix: "ocr-scan", id: id)
         do {
             try data.write(to: url)
         } catch {
@@ -213,13 +317,13 @@ fileprivate final class ScanDelegate: NSObject, VNDocumentCameraViewControllerDe
 
     func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
         controller.dismiss(animated: true)
-        OcrFunctions.activeScan = nil
+        OcrFunctions.finish()
         OcrFunctions.Recognize.send(OcrFunctions.scanCancelled, ["id": id])
     }
 
     func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
         controller.dismiss(animated: true)
-        OcrFunctions.activeScan = nil
+        OcrFunctions.finish()
         OcrFunctions.Recognize.fail(id, error.localizedDescription)
     }
 }
@@ -234,14 +338,14 @@ fileprivate final class CaptureDelegate: NSObject, UIImagePickerControllerDelega
 
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
         picker.dismiss(animated: true)
-        defer { OcrFunctions.activeCapture = nil }
+        defer { OcrFunctions.finish() }
 
         guard let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.9) else {
             OcrFunctions.Recognize.fail(id, "The camera returned no photo")
             return
         }
 
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ocr-capture-\(id).jpg")
+        let url = OcrFunctions.imageURL(prefix: "ocr-capture", id: id)
         do {
             try data.write(to: url)
         } catch {
@@ -254,23 +358,7 @@ fileprivate final class CaptureDelegate: NSObject, UIImagePickerControllerDelega
 
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
         picker.dismiss(animated: true)
-        OcrFunctions.activeCapture = nil
+        OcrFunctions.finish()
         OcrFunctions.Recognize.send(OcrFunctions.scanCancelled, ["id": id])
-    }
-}
-
-private extension CGImagePropertyOrientation {
-    init(_ orientation: UIImage.Orientation) {
-        switch orientation {
-        case .up: self = .up
-        case .down: self = .down
-        case .left: self = .left
-        case .right: self = .right
-        case .upMirrored: self = .upMirrored
-        case .downMirrored: self = .downMirrored
-        case .leftMirrored: self = .leftMirrored
-        case .rightMirrored: self = .rightMirrored
-        @unknown default: self = .up
-        }
     }
 }
