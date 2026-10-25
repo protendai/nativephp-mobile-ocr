@@ -1,0 +1,37 @@
+{
+    "name": "@protendai/nativephp-mobile-ocr",
+    "version": "1.0.0",
+    "description": "JavaScript API for protendai/nativephp-mobile-ocr: on-device OCR and document scanning for NativePHP Mobile v4 (iOS and Android).",
+    "private": false,
+    "type": "module",
+    "main": "resources/js/index.js",
+    "module": "resources/js/index.js",
+    "types": "resources/js/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./resources/js/index.d.ts",
+            "default": "./resources/js/index.js"
+        }
+    },
+    "files": [
+        "resources/js"
+    ],
+    "keywords": [
+        "nativephp",
+        "nativephp-plugin",
+        "ocr",
+        "text-recognition",
+        "document-scanner"
+    ],
+    "author": "Tendai Karuma <karumatendai@gmail.com>",
+    "license": "MIT",
+    "homepage": "https://github.com/protendai/nativephp-mobile-ocr",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/protendai/nativephp-mobile-ocr.git"
+    },
+    "bugs": {
+        "url": "https://github.com/protendai/nativephp-mobile-ocr/issues"
+    },
+    "sideEffects": false
+}
