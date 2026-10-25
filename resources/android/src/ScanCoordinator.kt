@@ -92,7 +92,7 @@ class ScanCoordinator : Fragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingId = savedInstanceState?.getString(PENDING_ID_KEY)
-        pendingFile = savedInstanceState?.getString(PENDING_FILE_KEY)?.let(::File)
+        pendingFile = savedInstanceState?.getString(PENDING_FILE_KEY)?.let { File(it) }
 
         permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             val id = pendingId ?: return@registerForActivityResult

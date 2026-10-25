@@ -216,7 +216,7 @@ enum OcrFunctions {
         /// Recognise text in the image at `path` off the main thread and send the result.
         static func run(path: String, id: String) {
             DispatchQueue.global(qos: .userInitiated).async {
-                guard let cgImage = autoreleasepool(invoking: { loadUpright(path: path) }) else {
+                guard let cgImage = autoreleasepool(invoking: { Self.loadUpright(path: path) }) else {
                     Self.fail(id, "Could not open image: unsupported or damaged file")
                     return
                 }
