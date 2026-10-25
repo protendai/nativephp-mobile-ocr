@@ -14,7 +14,18 @@ It also handles the details that trip up OCR on real documents:
 
 NativePHP v4 had no free way to read text from an image. This plugin fills that gap with the text recognition engines already built into each platform. They're wrapped in a small PHP API that fits the v4 SuperNative event model.
 
-It was built for Token Scanner, an app that reads Zimbabwean electricity tokens off till slips and receipts. Everything below was tested against real ones.
+It was first built for an app that reads prepaid electricity tokens off till slips and receipts, and everything below was tested against real ones.
+
+## Platform support
+
+| | Android | iOS |
+| --- | --- | --- |
+| `recognize()` | ML Kit text recognition (bundled model) | Vision `VNRecognizeTextRequest` |
+| `capture()` | Phone's camera app, back lens | `UIImagePickerController`, rear camera |
+| `scan()` | ML Kit document scanner (Google Play services) | VisionKit document camera |
+| Minimum (plugin code) | API 21 | iOS 13 |
+
+Your app's own NativePHP minimums apply on top of these.
 
 ## Install
 
@@ -33,7 +44,7 @@ php artisan native:run android   # or ios
 
 `native:jump` isn't enough after installing, because the Kotlin and Swift code has to be compiled in.
 
-Requirements: `nativephp/mobile` ^4.0, Android 8+ (API 26), iOS 18+.
+Requirements: `nativephp/mobile` ^4.0. The plugin itself needs Android API 21+ and iOS 13+; NativePHP's own minimums are higher, so in practice any NativePHP v4 app works.
 
 ## Three ways in
 
@@ -47,17 +58,19 @@ All three return a request id straight away. The work runs on a background threa
 
 | Event | Payload |
 | --- | --- |
-| `Protendai\Ocr\Events\TextRecognized` | `id`, `text` (the engine's reading order), `lines` (strings), `boxes` (each line with its position, see below), `path` (the image that was read) |
-| `Protendai\Ocr\Events\RecognitionFailed` | `id`, `message` |
+| `Protendai\Ocr\Events\TextRecognized` | `id`, `text` (the engine's reading order), `lines` (strings), `boxes` (each line with its position, see below), `path` (the image that was read), `width` / `height` (pixel size of the image the boxes refer to) |
+| `Protendai\Ocr\Events\RecognitionFailed` | `id`, `message` (see [Errors](#errors)) |
 | `Protendai\Ocr\Events\ScanCancelled` | `id`: the user closed the camera or scanner without a picture (`capture()` / `scan()` only) |
 
 If the device refuses a request outright (a missing file, or no camera at all), the method throws `Protendai\Ocr\Exceptions\OcrException` and no event follows.
+
+Only one `capture()` or `scan()` can be open at a time. Calling either again while the camera or scanner is still open answers the new id with `RecognitionFailed` (`RecognitionFailed::BUSY`); the open one carries on. `recognize()` calls are queued and can overlap freely.
 
 ### capture() vs scan()
 
 Try `capture()` first. In testing, a plain back-camera photo read **better** than the document scanner on receipts and on text photographed off a screen. The scanner's clean-up filters sharpen edges and boost contrast for paper, which can smudge small digits. Keep `scan()` for crumpled or curled paper, where flattening the page matters more than keeping fine detail. Better still, let your users choose.
 
-## Usage
+## Usage (PHP)
 
 ```php
 use Native\Mobile\Attributes\On;
@@ -90,7 +103,7 @@ class ScanReceipt extends NativeComponent
     }
 
     #[On(TextRecognized::class)]
-    public function onTextRecognized(string $id, string $text, array $lines = [], array $boxes = []): void
+    public function onTextRecognized(string $id, string $text, array $lines = [], array $boxes = [], ?string $path = null, ?int $width = null, ?int $height = null): void
     {
         if ($id !== $this->ocrRequestId) {
             return; // a result for some other request
@@ -113,19 +126,67 @@ class ScanReceipt extends NativeComponent
     public function onRecognitionFailed(string $id, string $message): void
     {
         if ($id === $this->ocrRequestId) {
-            $this->scanning = false; // e.g. "Camera permission denied"
+            $this->scanning = false;
+            // $message === RecognitionFailed::CAMERA_PERMISSION_DENIED: point the user at Settings
         }
     }
 }
 ```
 
+Handlers receive the payload by parameter name, so declare only what you need and give optional values defaults (`array $boxes = []`, `?int $width = null`). Payload keys you don't declare are ignored, which keeps handlers working as the payload grows.
+
+In a **Livewire** component, use `#[OnNative(TextRecognized::class)]` from `Native\Mobile\Attributes\OnNative` instead of `#[On]`; the methods are the same.
+
 You can pass your own id to any of the methods, for example `Ocr::capture('receipt-42')`.
 
 For images you already have, such as gallery picks from `Camera::pickImages('image')` or a `PhotoTaken` path from the camera plugin, call `Ocr::recognize($path)` and handle the same events.
 
+## Usage (JavaScript)
+
+For Inertia + Vue/React front ends the plugin ships an ES module with the same API, at `vendor/protendai/nativephp-mobile-ocr/resources/js/index.js` (TypeScript types alongside). Import it by path, or add an alias in `vite.config.js`:
+
+```js
+// vite.config.js: resolve: { alias: { '@protendai/nativephp-mobile-ocr': '/vendor/protendai/nativephp-mobile-ocr/resources/js/index.js' } }
+import { capture, scan, recognize, onTextRecognized, onRecognitionFailed, onScanCancelled, rows, Messages, OcrError } from '@protendai/nativephp-mobile-ocr';
+
+let requestId = null;
+
+const stopListening = onTextRecognized(({ id, text, boxes, width, height }) => {
+    if (id !== requestId) return;
+    console.log(rows(boxes) ?? text);
+});
+
+onRecognitionFailed(({ id, message }) => {
+    if (id === requestId && message === Messages.CameraPermissionDenied) {
+        // point the user at Settings
+    }
+});
+
+onScanCancelled(({ id }) => { /* the user backed out */ });
+
+try {
+    requestId = await capture();          // or scan(), or recognize(path)
+} catch (e) {
+    if (e instanceof OcrError) console.warn(e.code, e.message);  // e.g. UNSUPPORTED
+}
+
+// later, e.g. in onUnmounted / a useEffect cleanup:
+stopListening();
+```
+
+| Export | What it is |
+| --- | --- |
+| `recognize(path, id?)`, `capture(id?)`, `scan(id?)` | Same as the PHP methods; resolve to the request id, reject with `OcrError` (`code`, `message`) when the device refuses |
+| `onTextRecognized(cb)`, `onRecognitionFailed(cb)`, `onScanCancelled(cb)`, `on(eventName, cb)` | Listen on NativePHP's `native-event` channel; each returns a function that stops listening |
+| `Events` | The event class names, e.g. `Events.TextRecognized` (also usable with `On()` from `@nativephp/mobile`) |
+| `Messages` | `CameraPermissionDenied`, `Busy` |
+| `rows(boxes)` | The JavaScript twin of `Layout::rows()` |
+
 ## Reading receipts: positions and layout helpers
 
-Each entry in `boxes` is one recognised line with its position: `['text' => 'Total', 'left' => 40, 'top' => 580, 'right' => 160, 'bottom' => 608]`. Android reports pixels and iOS reports 0–1 fractions. Both use a top-left origin, and the helpers work with either.
+Each entry in `boxes` is one recognised line with its position: `['text' => 'Total', 'left' => 40, 'top' => 580, 'right' => 160, 'bottom' => 608]`. Positions are **pixels of the upright image that was read**, with a top-left origin, on both platforms. `width` and `height` give that image's size, so `left / width` is a 0–1 fraction if you need one. Large photos are downscaled before reading (longest side at most 4096 px), so compare boxes with `width` / `height` rather than with the file's own dimensions.
+
+Before 1.0, iOS reported 0–1 fractions. The helpers below don't care about units, so code built on them works with either.
 
 **`Layout::rows(array $boxes): ?string`** rebuilds the text row by row, left to right, the way a person reads it:
 
@@ -153,15 +214,37 @@ Both helpers are plain PHP with no Laravel dependency, so you can unit-test your
 
 ## Permissions
 
-- **Android `capture()`**: if your app declares `android.permission.CAMERA` (the camera plugin does), Android only allows camera intents once it's granted. `capture()` asks for it on first use. A refusal arrives as `RecognitionFailed` with the message `Camera permission denied`. The photo is removed from the gallery once it's been read.
+- **Android `capture()`**: the plugin adds no permissions. If your app declares `android.permission.CAMERA` (the camera plugin does), Android only allows camera intents once it's granted, so `capture()` asks for it on first use. A refusal arrives as `RecognitionFailed` with the message `Camera permission denied` (`RecognitionFailed::CAMERA_PERMISSION_DENIED`). The photo goes straight into your app's cache through NativePHP's built-in FileProvider; nothing is written to the gallery.
 - **Android `scan()`**: needs no permission. It runs in Google Play services, which downloads the scanner module the first time it's used, so that first scan needs a connection. If the module isn't available you get `RecognitionFailed` with a message starting `Scanner unavailable`, and can fall back to `capture()`.
-- **iOS `capture()` and `scan()`**: your app needs `NSCameraUsageDescription`.
+- **iOS `capture()` and `scan()`**: the plugin adds `NSCameraUsageDescription` ("This app uses the camera to photograph documents and read the text on them."). To change the wording, set it in your app's `config/nativephp.php` under `permissions`, which wins over plugins. Camera access is asked for on first use; a refusal (or a camera turned off in Settings or by Screen Time) arrives as `RecognitionFailed` with `Camera permission denied`, the same as Android.
 - **`recognize()`** needs no permissions.
+
+## Errors
+
+`RecognitionFailed` messages you may want to branch on:
+
+| Message | When |
+| --- | --- |
+| `Camera permission denied` (`RecognitionFailed::CAMERA_PERMISSION_DENIED`) | The user refused camera access (`capture()`; on iOS also `scan()`) |
+| `Another capture or scan is already in progress` (`RecognitionFailed::BUSY`) | `capture()` / `scan()` called while one is open |
+| `No camera app available`, `Could not prepare the camera`, `Could not open the camera: …` | Android `capture()` could not open a camera app; fall back to the camera plugin |
+| `Scanner unavailable: …`, `Could not start the scanner: …` | Android `scan()`: Play services or the scanner module is missing; fall back to `capture()` |
+| `The camera returned no photo`, `The scanner returned no page` | The camera or scanner finished without an image |
+| `Could not open image: …` | The file isn't an image the platform can decode |
+
+Anything else is an engine error message, passed through as-is.
+
+`OcrException` (thrown, no event follows) carries `errorCode`: `INVALID_PARAMETERS` (no path), `FILE_NOT_FOUND`, or `UNSUPPORTED` (no camera, or no document scanner on this iOS device).
+
+## Files
+
+`capture()` and `scan()` save the image in a plugin folder inside your app's cache (`ocr/`), and `TextRecognized::$path` points at it. Images left by earlier requests are deleted when a later capture or scan starts, and each one is kept for at least a minute, so read or copy `$path` in your `TextRecognized` handler if you want to keep it. A cancelled or failed capture deletes its file straight away. `recognize()` never touches the file you pass in.
 
 ## Platform notes
 
 - **Android text recognition** uses the *bundled* ML Kit model (`com.google.mlkit:text-recognition`). The model ships inside your APK, adding a few MB, and works offline from the first launch, unlike the Play Services variant, which downloads it on first use. EXIF rotation is respected.
 - **Android back lens:** `capture()` sends the "use the back camera" extras that Samsung, Google and most other camera apps understand. A camera app that ignores all of them may still open the last-used lens.
+- **Large photos** are decoded upright (EXIF orientation applied) and downscaled so their longest side is at most 4096 px before recognition, which keeps 50–108 MP phone photos from running the app out of memory without losing fine print on normal photos.
 - **iOS** uses Vision's `VNRecognizeTextRequest` at the `.accurate` level, plus VisionKit's document camera for `scan()`. Both are system frameworks, so there are no pods or Swift packages. Language correction is **off**, because it "corrects" long digit runs such as codes, tokens and account numbers into words.
 
 ## Testing
@@ -205,6 +288,10 @@ To deliver a result, emit the event with the id your component stored. Pin the i
 - One image per call. `scan()` is limited to one page.
 - Accuracy depends on the photo: good light, a flat page and a level phone matter more than anything else.
 
+## Support
+
+Questions, bugs and feature requests: [GitHub issues](https://github.com/protendai/nativephp-mobile-ocr/issues). See the [changelog](CHANGELOG.md) for what changed between versions.
+
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
