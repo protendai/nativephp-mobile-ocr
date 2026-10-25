@@ -1,11 +1,14 @@
 {
     "name": "protendai/nativephp-mobile-ocr",
-    "version": "0.1.0",
-    "description": "Free, on-device OCR (text recognition) and document scanning for NativePHP Mobile v4. ML Kit on Android, Apple Vision on iOS.",
+    "version": "1.0.0",
+    "description": "Free, on-device OCR (text recognition) and document scanning for NativePHP Mobile v4 on iOS and Android. ML Kit on Android, Apple Vision on iOS. Works offline.",
     "namespace": "Ocr",
     "keywords": [
+        "nativephp-plugin",
+        "nativephp",
         "ocr",
         "text recognition",
+        "document scanner",
         "ml kit",
         "vision",
         "offline"
@@ -18,10 +21,10 @@
     "author": {
         "name": "Tendai Karuma",
         "email": "karumatendai@gmail.com",
-        "url": ""
+        "url": "https://github.com/protendai"
     },
-    "homepage": "",
-    "repository": "",
+    "homepage": "https://github.com/protendai/nativephp-mobile-ocr",
+    "repository": "https://github.com/protendai/nativephp-mobile-ocr",
     "funding": [],
     "platforms": [
         "android",
@@ -48,7 +51,7 @@
         }
     ],
     "android": {
-        "min_version": 26,
+        "min_version": 21,
         "permissions": [],
         "dependencies": {
             "implementation": [
@@ -58,7 +61,10 @@
         }
     },
     "ios": {
-        "min_version": "18.0",
+        "min_version": "13.0",
+        "info_plist": {
+            "NSCameraUsageDescription": "This app uses the camera to photograph documents and read the text on them."
+        },
         "dependencies": {
             "swift_packages": [],
             "pods": []

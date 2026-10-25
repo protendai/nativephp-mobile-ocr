@@ -1,13 +1,31 @@
 {
     "name": "protendai/nativephp-mobile-ocr",
-    "description": "Free, on-device OCR (text recognition) for NativePHP Mobile v4. ML Kit on Android, Apple Vision on iOS. Works offline.",
+    "description": "Free, on-device OCR (text recognition) and document scanning for NativePHP Mobile v4 on iOS and Android. ML Kit on Android, Apple Vision on iOS. Works offline.",
     "type": "nativephp-plugin",
     "license": "MIT",
-    "keywords": ["nativephp", "ocr", "text-recognition", "ml-kit", "vision", "laravel", "mobile"],
+    "homepage": "https://github.com/protendai/nativephp-mobile-ocr",
+    "support": {
+        "issues": "https://github.com/protendai/nativephp-mobile-ocr/issues",
+        "source": "https://github.com/protendai/nativephp-mobile-ocr"
+    },
+    "keywords": [
+        "nativephp-plugin",
+        "nativephp",
+        "ocr",
+        "text-recognition",
+        "document-scanner",
+        "ml-kit",
+        "vision",
+        "laravel",
+        "mobile",
+        "ios",
+        "android"
+    ],
     "authors": [
         {
             "name": "Tendai Karuma",
-            "email": "karumatendai@gmail.com"
+            "email": "karumatendai@gmail.com",
+            "homepage": "https://github.com/protendai"
         }
     ],
     "require": {
@@ -15,7 +33,9 @@
         "nativephp/mobile": "^4.0"
     },
     "require-dev": {
-        "pestphp/pest": "^3.0|^4.0|^5.0"
+        "pestphp/pest": "^3.0|^4.0|^5.0",
+        "ramsey/uuid": "^4.7",
+        "laravel/framework": "^12.0|^13.0"
     },
     "autoload": {
         "psr-4": {

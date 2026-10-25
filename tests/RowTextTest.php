@@ -41,7 +41,7 @@ it('rebuilds receipt rows so each label sits next to its value', function () {
     ]));
 });
 
-it('works with the 0-1 coordinates iOS reports', function () {
+it('works with any unit, such as 0-1 fractions (iOS before 1.0)', function () {
     $scaled = array_map(fn ($b) => ['text' => $b['text'], 'left' => $b['left'] / 1000, 'top' => $b['top'] / 1000, 'right' => $b['right'] / 1000, 'bottom' => $b['bottom'] / 1000], receiptBoxes());
 
     expect(Layout::rows($scaled))->toContain("Tender Amount   1,400.00\n");
